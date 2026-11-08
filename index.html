@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Where Did I Put It (Copy)</title>
+<style>
+:root{--bg:#f3f5f1;--surface:#fff;--ink:#1d2a24;--muted:#5d6b63;--line:#d5dcd5;--accent:#1f6f5c;--accent-ink:#fff;--warn:#b3402a;--chip:#e3ece6;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141a17;--surface:#1d2621;--ink:#e8efe9;--muted:#9baba1;--line:#33423a;--accent:#59c3a5;--accent-ink:#0e1a15;--warn:#e98a72;--chip:#2a3830}}
+:root[data-theme="dark"]{--bg:#141a17;--surface:#1d2621;--ink:#e8efe9;--muted:#9baba1;--line:#33423a;--accent:#59c3a5;--accent-ink:#0e1a15;--warn:#e98a72;--chip:#2a3830}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:920px;margin:0 auto;padding:20px 16px 48px}
+h1{font:700 28px/1.2 "Fraunces",Georgia,serif;margin:8px 0 4px}
+.sub{color:var(--muted);margin:0 0 20px}
+.bar{display:grid;gap:10px;grid-template-columns:1fr auto;margin-bottom:14px}
+input,select,button{font:inherit;color:inherit}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+button{cursor:pointer;border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:8px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.add{display:grid;gap:10px;grid-template-columns:2fr 2fr 1fr auto;margin-bottom:22px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.loc{background:var(--surface);border:1px solid var(--line);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.loc h2{margin:0;padding:10px 14px;font:600 17px/1.3 "Fraunces",Georgia,serif;display:flex;justify-content:space-between;align-items:center;background:var(--chip)}
+.loc h2 span{font:14px system-ui,sans-serif;color:var(--muted)}
+.item{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+.item .n{font-weight:600}.item .q{color:var(--muted);font-size:14px}
+.item select{width:auto;padding:6px 8px}
+.item .del{color:var(--warn);padding:6px 10px}
+.empty{color:var(--muted);padding:12px 14px}
+.manage{margin-top:26px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.manage h3{margin:0 0 10px;font:600 17px "Fraunces",Georgia,serif}
+.row{display:flex;gap:8px;margin-bottom:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--chip);border-radius:99px;padding:4px 6px 4px 12px;display:inline-flex;gap:6px;align-items:center;font-size:14px}
+.chip button{border:0;background:transparent;padding:2px 8px;color:var(--warn)}
+.note{color:var(--muted);font-size:14px;margin:8px 0 0}
+button,select,input{min-height:44px}
+.chip button{min-height:36px;min-width:36px}
+@media(max-width:640px){body{font-size:17px}.add{grid-template-columns:1fr 1fr}.add button{grid-column:1/-1}.item{grid-template-columns:1fr auto}.item select{grid-column:1/2}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Where did I put it?</h1>
+  <p class="sub">Keep a list of places and record which items are in each one. Changes appear on every phone signed in to this page.</p>
+
+  <form class="add" id="addForm" onsubmit="return false">
+    <input id="name" placeholder="Item name (e.g. Passport)" aria-label="Item name" maxlength="80">
+    <select id="loc" aria-label="Location"></select>
+    <input id="qty" type="number" min="1" value="1" aria-label="Quantity">
+    <button class="primary" id="addBtn" type="button">Add item</button>
+  </form>
+
+  <p id="msg" role="alert" style="color:var(--warn);margin:-10px 0 14px;min-height:0"></p>
+
+  <div class="bar">
+    <input id="search" type="search" placeholder="Find an item…" aria-label="Find an item">
+    <button id="clear" type="button">Clear search</button>
+  </div>
+
+  <div class="tabs" role="group" aria-label="View">
+    <button id="byLoc" aria-pressed="true">By location</button>
+    <button id="byName" aria-pressed="false">All items A–Z</button>
+  </div>
+
+  <div id="list"></div>
+
+  <section class="manage">
+    <h3>Locations</h3>
+    <div class="row">
+      <input id="newLoc" placeholder="New location (e.g. Garage shelf)" aria-label="New location" maxlength="60">
+      <button id="addLoc" type="button">Add location</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <p class="note" id="locNote">Tap ✎ to rename a location; its items stay with it. Removing a location moves its items to “Unassigned”.</p>
+  </section>
+</main>
+
+<div id="status" role="status" style="position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:4px 12px;font-size:13px;color:var(--muted)">Connecting…</div>
+<script>
+(function(){
+  var UN="";               // empty location id = unassigned
+  var UNL="Unassigned";
+  var locs=[], items=[];   // [{id,name}], [{id,name,loc,qty}]
+  var view="loc", db=null, canWrite=true, editId=null, editText="", editItemId=null, editItemText="";
+  function $(id){return document.getElementById(id);}
+  function el(tag,attrs,text){var e=document.createElement(tag);if(attrs)for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!==undefined)e.textContent=text;return e;}
+  function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+  function status(t){$("status").textContent=t;}
+  function locName(id){for(var i=0;i<locs.length;i++)if(locs[i].id===id)return locs[i].name;return UNL;}
+  function fail(e){status("Couldn’t save: "+((e&&e.code)||"error")+". Try again.");}
+  function put(path,obj){if(!db||!canWrite)return Promise.resolve();return db.doc(path).set(obj).catch(fail);}
+  function del(path){if(!db||!canWrite)return Promise.resolve();return db.doc(path).delete().catch(fail);}
+
+  function locOptions(sel,current){
+    sel.innerHTML="";
+    locs.concat([{id:UN,name:UNL}]).forEach(function(l){var o=el("option",{value:l.id},l.name);if(l.id===current)o.selected=true;sel.appendChild(o);});
+  }
+  function itemRow(it){
+    var row=el("div",{"class":"item"});
+    var left=el("div");
+    if(editItemId===it.id){
+      var inp=el("input",{type:"text",maxlength:"80","aria-label":"New name for "+it.name});
+      inp.value=editItemText;
+      inp.addEventListener("input",function(){editItemText=inp.value;});
+      var saveIt=function(){
+        var v=editItemText.trim().replace(/\s+/g," ");
+        if(!v)return;
+        if(v===it.name){editItemId=null;render();return;}
+        var dup=items.filter(function(o){return o.id!==it.id&&norm(o.name)===norm(v);})[0];
+        if(dup){msg("“"+dup.name+"” is already in your list ("+locName(dup.loc)+"). Duplicates aren’t allowed.");inp.focus();return;}
+        msg("");
+        put("items/"+it.id,{name:v,qty:it.qty,loc:it.loc});
+        editItemId=null;render();
+      };
+      inp.addEventListener("keydown",function(e){if(e.key==="Enter")saveIt();if(e.key==="Escape"){editItemId=null;render();}});
+      var eb=el("div",{style:"display:flex;gap:6px;margin-top:6px"});
+      var sv=el("button",{"class":"primary","aria-label":"Save name"},"Save");
+      sv.addEventListener("click",saveIt);
+      var cn=el("button",{"aria-label":"Cancel rename"},"Cancel");
+      cn.addEventListener("click",function(){editItemId=null;render();});
+      eb.appendChild(sv);eb.appendChild(cn);
+      left.appendChild(inp);left.appendChild(eb);
+      setTimeout(function(){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);},0);
+    } else {
+      var nm=el("div",{"class":"n"},it.name);
+      var rn=el("button",{"aria-label":"Rename "+it.name,style:"color:var(--accent);border:0;background:transparent;padding:0 8px"},"✎");
+      if(!canWrite)rn.disabled=true;
+      rn.addEventListener("click",function(){editItemId=it.id;editItemText=it.name;render();});
+      nm.appendChild(rn);
+      left.appendChild(nm);
+    }
+    left.appendChild(el("div",{"class":"q"},"Qty "+it.qty+(view==="name"?" · in "+locName(it.loc):"")));
+    row.appendChild(left);
+    var sel=el("select",{"aria-label":"Move "+it.name});
+    locOptions(sel,it.loc);
+    if(!canWrite)sel.disabled=true;
+    sel.addEventListener("change",function(){put("items/"+it.id,{name:it.name,qty:it.qty,loc:sel.value});});
+    row.appendChild(sel);
+    var d=el("button",{"class":"del","aria-label":"Delete "+it.name},"Delete");
+    if(!canWrite)d.disabled=true;
+    d.addEventListener("click",function(){del("items/"+it.id);});
+    row.appendChild(d);
+    return row;
+  }
+  function render(){
+    var q=$("search").value.trim().toLowerCase();
+    var shown=items.filter(function(i){return !q||i.name.toLowerCase().indexOf(q)>-1;});
+    var list=$("list");list.innerHTML="";
+    var byName=function(a,b){return a.name.localeCompare(b.name);};
+    if(!items.length){list.appendChild(el("div",{"class":"empty"},"No items yet. Add your first item above and pick where it lives."));}
+    else if(!shown.length){list.appendChild(el("div",{"class":"empty"},"No items match “"+$("search").value+"”."));}
+    else if(view==="loc"){
+      locs.concat([{id:UN,name:UNL}]).forEach(function(l){
+        var here=shown.filter(function(i){return i.loc===l.id;});
+        if(l.id===UN&&!here.length)return;
+        if(q&&!here.length)return;
+        var box=el("section",{"class":"loc"});
+        var h=el("h2",null,l.name);h.appendChild(el("span",null,here.length+(here.length===1?" item":" items")));
+        box.appendChild(h);
+        if(!here.length)box.appendChild(el("div",{"class":"empty"},"Nothing here yet."));
+        here.sort(byName).forEach(function(i){box.appendChild(itemRow(i));});
+        list.appendChild(box);
+      });
+    } else {
+      var box=el("section",{"class":"loc"});
+      shown.slice().sort(byName).forEach(function(i){box.appendChild(itemRow(i));});
+      list.appendChild(box);
+    }
+    var chips=$("chips");chips.innerHTML="";
+    locs.forEach(function(l){
+      if(editId===l.id){
+        var ec=el("span",{"class":"chip"});
+        var inp=el("input",{type:"text",maxlength:"60","aria-label":"New name for "+l.name,style:"width:11em;padding:3px 8px"});
+        inp.value=editText;
+        inp.addEventListener("input",function(){editText=inp.value;});
+        function save(){
+          var v=editText.trim().replace(/\s+/g," ");
+          if(!v)return;
+          if(v===l.name){editId=null;render();return;}
+          var dup=locs.some(function(o){return o.id!==l.id&&norm(o.name)===norm(v);})||norm(v)===norm(UNL);
+          if(dup){$("locNote").textContent="“"+v+"” already exists.";inp.focus();return;}
+          $("locNote").textContent="Removing a location moves its items to “Unassigned”.";
+          put("locations/"+l.id,{name:v});
+          editId=null;render();
+        }
+        inp.addEventListener("keydown",function(e){if(e.key==="Enter")save();if(e.key==="Escape"){editId=null;render();}});
+        var sv=el("button",{"aria-label":"Save name",style:"color:var(--accent)"},"Save");
+        sv.addEventListener("click",save);
+        var cn=el("button",{"aria-label":"Cancel rename"},"Cancel");
+        cn.addEventListener("click",function(){editId=null;render();});
+        ec.appendChild(inp);ec.appendChild(sv);ec.appendChild(cn);chips.appendChild(ec);
+        setTimeout(function(){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);},0);
+        return;
+      }
+      var c=el("span",{"class":"chip"},l.name);
+      var rn=el("button",{"aria-label":"Rename location "+l.name,style:"color:var(--accent)"},"✎");
+      if(!canWrite)rn.disabled=true;
+      rn.addEventListener("click",function(){editId=l.id;editText=l.name;render();});
+      c.appendChild(rn);
+      var x=el("button",{"aria-label":"Remove location "+l.name},"✕");
+      if(!canWrite)x.disabled=true;
+      x.addEventListener("click",function(){
+        var mine=items.filter(function(i){return i.loc===l.id;});
+        if(mine.length&&!confirm(l.name+" has "+mine.length+" item(s). Move them to Unassigned and remove this location?"))return;
+        mine.reduce(function(p,i){return p.then(function(){return put("items/"+i.id,{name:i.name,qty:i.qty,loc:UN});});},Promise.resolve())
+          .then(function(){return del("locations/"+l.id);});
+      });
+      c.appendChild(x);chips.appendChild(c);
+    });
+    var sel=$("loc");locOptions(sel,sel.value);
+    ["addBtn","addLoc"].forEach(function(id){$(id).disabled=!canWrite;});
+  }
+  function norm(s){return String(s).trim().replace(/\s+/g," ").toLowerCase();}
+  // Same name -> same document id, so two phones adding the same name at once collapse into one record.
+  function keyFor(s){
+    try{var u=unescape(encodeURIComponent(norm(s))),h="n";for(var i=0;i<u.length;i++)h+=("0"+u.charCodeAt(i).toString(16)).slice(-2);if(h.length<=190)return h;}catch(e){}
+    return uid();
+  }
+  function msg(t){$("msg").textContent=t;}
+  function addItem(){
+    var n=$("name").value.trim().replace(/\s+/g," ");
+    if(!n){$("name").focus();return;}
+    var same=items.filter(function(i){return norm(i.name)===norm(n);})[0];
+    if(same){msg("“"+same.name+"” is already in your list ("+locName(same.loc)+"). Duplicates aren’t allowed; move or delete the existing one instead.");$("name").focus();return;}
+    msg("");
+    var qty=Math.max(1,parseInt($("qty").value,10)||1);
+    var newId=keyFor(n);
+    if(items.some(function(i){return i.id===newId;}))newId=uid(); // an id left behind by a renamed item
+    put("items/"+newId,{name:n,loc:$("loc").value,qty:qty});
+    $("name").value="";$("qty").value=1;$("name").focus();
+  }
+  function addLoc(){
+    var v=$("newLoc").value.trim().replace(/\s+/g," ");if(!v)return;
+    var dup=locs.some(function(l){return norm(l.name)===norm(v);})||norm(v)===norm(UNL);
+    if(dup){$("locNote").textContent="“"+v+"” already exists.";return;}
+    $("locNote").textContent="Removing a location moves its items to “Unassigned”.";
+    put("locations/"+keyFor(v),{name:v});$("newLoc").value="";
+  }
+  $("addBtn").addEventListener("click",addItem);
+  $("name").addEventListener("keydown",function(e){if(e.key==="Enter")addItem();});
+  $("addLoc").addEventListener("click",addLoc);
+  $("newLoc").addEventListener("keydown",function(e){if(e.key==="Enter")addLoc();});
+  $("search").addEventListener("input",render);
+  $("clear").addEventListener("click",function(){$("search").value="";render();});
+  $("byLoc").addEventListener("click",function(){view="loc";$("byLoc").setAttribute("aria-pressed","true");$("byName").setAttribute("aria-pressed","false");render();});
+  $("byName").addEventListener("click",function(){view="name";$("byName").setAttribute("aria-pressed","true");$("byLoc").setAttribute("aria-pressed","false");render();});
+  render();
+  status("Not connected");
+
+  (async function(){
+    try{
+      var user=await claude.use("user");
+      if(user){var w=user.can("data.write");if(w===false)canWrite=false;}
+      db=await claude.use("db");
+    }catch(e){db=null;}
+    if(!db){status("Sign in to claude.ai to sync");canWrite=false;render();return;}
+    if(!canWrite)status("View only");
+    db.collection("locations").onSnapshot(function(s){
+      locs=s.docs.map(function(d){var x=d.data()||{};return {id:d.id,name:String(x.name||"")};}).sort(function(a,b){return a.name.localeCompare(b.name);});
+      if(canWrite)status("Synced");render();
+    },function(e){status("Sync error: "+((e&&e.code)||"unknown"));});
+    db.collection("items").onSnapshot(function(s){
+      items=s.docs.map(function(d){var x=d.data()||{};return {id:d.id,name:String(x.name||""),loc:String(x.loc||""),qty:Number(x.qty)||1};});
+      render();
+    },function(e){status("Sync error: "+((e&&e.code)||"unknown"));});
+  })();
+})();
+</script>
+</body>
+</html>
