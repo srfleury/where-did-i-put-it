@@ -3,8 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Where Did I Put It (Copy)</title>
+<title>Where Did I Put It</title>
+<meta name="theme-color" content="#1f6f5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
+[hidden]{display:none!important}
+.setup{max-width:480px;margin:0 auto;padding:32px 16px}
+.setup label{display:block;font-weight:600;margin-bottom:6px}
+.setup button{width:100%;margin-top:12px}
+.setup .err{color:var(--warn);margin:10px 0 0;min-height:1.5em}
 :root{--bg:#f3f5f1;--surface:#fff;--ink:#1d2a24;--muted:#5d6b63;--line:#d5dcd5;--accent:#1f6f5c;--accent-ink:#fff;--warn:#b3402a;--chip:#e3ece6;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 :root:not([data-theme="light"]){}
@@ -46,9 +55,22 @@ button,select,input{min-height:44px}
 </style>
 </head>
 <body>
-<main>
+<section class="setup" id="setup" hidden>
   <h1>Where did I put it?</h1>
-  <p class="sub">Keep a list of places and record which items are in each one. Changes appear on every phone signed in to this page.</p>
+  <p class="sub">Enter your household code. Use exactly the same code on both phones. That is how they share one list.</p>
+  <form id="setupForm" novalidate>
+    <label for="code">Household code (at least 12 characters)</label>
+    <input id="code" type="text" maxlength="100" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. blue otter river 42">
+    <p class="err" id="codeMsg" role="alert"></p>
+    <button class="primary" type="submit">Continue</button>
+    <button id="cancelCode" type="button" hidden>Cancel</button>
+  </form>
+  <p class="note" id="changeNote" hidden>Your current list stays saved under the old code. Enter the old code again to get back to it.</p>
+  <p class="note">Anyone who knows this code can see and change your list, so don’t store anything sensitive here.</p>
+</section>
+<main id="app">
+  <h1>Where did I put it?</h1>
+  <p class="sub">Keep a list of places and record which items are in each one. Changes appear on every phone using the same household code.</p>
 
   <form class="add" id="addForm" onsubmit="return false">
     <input id="name" placeholder="Item name (e.g. Passport)" aria-label="Item name" maxlength="80">
@@ -80,20 +102,29 @@ button,select,input{min-height:44px}
     <div class="chips" id="chips"></div>
     <p class="note" id="locNote">Tap ✎ to rename a location; its items stay with it. Removing a location moves its items to “Unassigned”.</p>
   </section>
+
+  <section class="manage">
+    <h3>Household code</h3>
+    <p class="note" id="codeShown" style="margin:0 0 10px"></p>
+    <button id="changeCode" type="button">Change code</button>
+  </section>
 </main>
 
 <div id="status" role="status" style="position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:4px 12px;font-size:13px;color:var(--muted)">Connecting…</div>
+<script src="firebase-config.js"></script>
 <script>
 (function(){
   var UN="";               // empty location id = unassigned
   var UNL="Unassigned";
   var locs=[], items=[];   // [{id,name}], [{id,name,loc,qty}]
-  var view="loc", db=null, canWrite=true, editId=null, editText="", editItemId=null, editItemText="";
+  var view="loc", db=null, canWrite=false, editId=null, editText="", editItemId=null, editItemText="";
   function $(id){return document.getElementById(id);}
   function el(tag,attrs,text){var e=document.createElement(tag);if(attrs)for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!==undefined)e.textContent=text;return e;}
   function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
   function status(t){$("status").textContent=t;}
   function locName(id){for(var i=0;i<locs.length;i++)if(locs[i].id===id)return locs[i].name;return UNL;}
+  // An item can point at a location the other phone removed while this one was offline. Show it as Unassigned so it never disappears.
+  function homeOf(it){return locs.some(function(l){return l.id===it.loc;})?it.loc:UN;}
   function fail(e){status("Couldn’t save: "+((e&&e.code)||"error")+". Try again.");}
   function put(path,obj){if(!db||!canWrite)return Promise.resolve();return db.doc(path).set(obj).catch(fail);}
   function del(path){if(!db||!canWrite)return Promise.resolve();return db.doc(path).delete().catch(fail);}
@@ -139,7 +170,7 @@ button,select,input{min-height:44px}
     left.appendChild(el("div",{"class":"q"},"Qty "+it.qty+(view==="name"?" · in "+locName(it.loc):"")));
     row.appendChild(left);
     var sel=el("select",{"aria-label":"Move "+it.name});
-    locOptions(sel,it.loc);
+    locOptions(sel,homeOf(it));
     if(!canWrite)sel.disabled=true;
     sel.addEventListener("change",function(){put("items/"+it.id,{name:it.name,qty:it.qty,loc:sel.value});});
     row.appendChild(sel);
@@ -158,7 +189,7 @@ button,select,input{min-height:44px}
     else if(!shown.length){list.appendChild(el("div",{"class":"empty"},"No items match “"+$("search").value+"”."));}
     else if(view==="loc"){
       locs.concat([{id:UN,name:UNL}]).forEach(function(l){
-        var here=shown.filter(function(i){return i.loc===l.id;});
+        var here=shown.filter(function(i){return homeOf(i)===l.id;});
         if(l.id===UN&&!here.length)return;
         if(q&&!here.length)return;
         var box=el("section",{"class":"loc"});
@@ -241,7 +272,9 @@ button,select,input{min-height:44px}
     var dup=locs.some(function(l){return norm(l.name)===norm(v);})||norm(v)===norm(UNL);
     if(dup){$("locNote").textContent="“"+v+"” already exists.";return;}
     $("locNote").textContent="Removing a location moves its items to “Unassigned”.";
-    put("locations/"+keyFor(v),{name:v});$("newLoc").value="";
+    var newId=keyFor(v);
+    if(locs.some(function(l){return l.id===newId;}))newId=uid(); // an id left behind by a renamed location
+    put("locations/"+newId,{name:v});$("newLoc").value="";
   }
   $("addBtn").addEventListener("click",addItem);
   $("name").addEventListener("keydown",function(e){if(e.key==="Enter")addItem();});
@@ -252,25 +285,169 @@ button,select,input{min-height:44px}
   $("byLoc").addEventListener("click",function(){view="loc";$("byLoc").setAttribute("aria-pressed","true");$("byName").setAttribute("aria-pressed","false");render();});
   $("byName").addEventListener("click",function(){view="name";$("byName").setAttribute("aria-pressed","true");$("byLoc").setAttribute("aria-pressed","false");render();});
   render();
-  status("Not connected");
 
-  (async function(){
-    try{
-      var user=await claude.use("user");
-      if(user){var w=user.can("data.write");if(w===false)canWrite=false;}
-      db=await claude.use("db");
-    }catch(e){db=null;}
-    if(!db){status("Sign in to claude.ai to sync");canWrite=false;render();return;}
-    if(!canWrite)status("View only");
-    db.collection("locations").onSnapshot(function(s){
-      locs=s.docs.map(function(d){var x=d.data()||{};return {id:d.id,name:String(x.name||"")};}).sort(function(a,b){return a.name.localeCompare(b.name);});
-      if(canWrite)status("Synced");render();
-    },function(e){status("Sync error: "+((e&&e.code)||"unknown"));});
-    db.collection("items").onSnapshot(function(s){
-      items=s.docs.map(function(d){var x=d.data()||{};return {id:d.id,name:String(x.name||""),loc:String(x.loc||""),qty:Number(x.qty)||1};});
-      render();
-    },function(e){status("Sync error: "+((e&&e.code)||"unknown"));});
-  })();
+  // Household code (first run)
+  var HOUSE_KEY="wdip_household";
+  function cleanCode(s){return String(s).trim().replace(/\s+/g," ").toLowerCase();}
+  function codeProblem(c){
+    if(c.length<12)return "The code needs at least 12 characters.";
+    if(c.indexOf("/")>-1)return "The code can’t contain a / character.";
+    if(/^__.*__$/.test(c))return "The code can’t start and end with two underscores.";
+    return "";
+  }
+  var currentCode="";
+  function showSetup(on){
+    $("setup").hidden=!on;$("app").hidden=on;$("status").hidden=on;
+    $("codeMsg").textContent="";
+    if(on)$("code").focus();
+  }
+  function useCode(c){currentCode=c;$("codeShown").textContent="This phone is using: "+c;}
+  function askHousehold(){
+    return new Promise(function(resolve){
+      var saved="";
+      try{saved=cleanCode(localStorage.getItem(HOUSE_KEY)||"");}catch(e){}
+      if(saved&&!codeProblem(saved)){useCode(saved);resolve(saved);}
+      else showSetup(true);
+      $("setupForm").addEventListener("submit",function(e){
+        e.preventDefault();
+        var c=cleanCode($("code").value),p=codeProblem(c);
+        if(p){$("codeMsg").textContent=p;$("code").focus();return;}
+        if(c===currentCode){showSetup(false);return;}
+        try{localStorage.setItem(HOUSE_KEY,c);}catch(err){}
+        // Already connected under another code: start again cleanly with the new one.
+        if(currentCode){location.reload();return;}
+        useCode(c);showSetup(false);resolve(c);
+      });
+    });
+  }
+  $("changeCode").addEventListener("click",function(){
+    $("code").value=currentCode;
+    $("cancelCode").hidden=false;$("changeNote").hidden=false;
+    showSetup(true);
+  });
+  $("cancelCode").addEventListener("click",function(){showSetup(false);});
+
+  // Used by the Firebase adapter below
+  window.wdip={
+    household:askHousehold,
+    status:status,
+    writeError:fail,
+    connect:function(adapter){
+      db=adapter;canWrite=true;render();
+      db.collection("locations").onSnapshot(function(s){
+        locs=s.docs.map(function(d){var x=d.data()||{};return {id:d.id,name:String(x.name||"")};}).sort(function(a,b){return a.name.localeCompare(b.name);});
+        render();
+      },function(e){status("Sync error: "+((e&&e.code)||"unknown"));});
+      db.collection("items").onSnapshot(function(s){
+        items=s.docs.map(function(d){var x=d.data()||{};return {id:d.id,name:String(x.name||""),loc:String(x.loc||""),qty:Number(x.qty)||1};});
+        render();
+      },function(e){status("Sync error: "+((e&&e.code)||"unknown"));});
+    }
+  };
+
+  // Offline support and updates
+  if("serviceWorker" in navigator){
+    var hadWorker=!!navigator.serviceWorker.controller,reloading=false;
+    // When an update takes over, reload once. (Not on the very first install.)
+    navigator.serviceWorker.addEventListener("controllerchange",function(){
+      if(hadWorker&&!reloading){reloading=true;location.reload();}
+    });
+    window.addEventListener("load",function(){
+      navigator.serviceWorker.register("sw.js").then(function(reg){
+        // An installed app can stay open for days, so look for updates each time it comes back on screen.
+        document.addEventListener("visibilitychange",function(){
+          if(document.visibilityState==="visible")reg.update().catch(function(){});
+        });
+      }).catch(function(e){console.warn("Service worker not registered",e);});
+    });
+  }
+})();
+</script>
+<script type="module">
+// Adapter: gives the app its db.doc(path).set()/delete() and db.collection(name).onSnapshot() calls, using Firestore.
+(async () => {
+  const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
+  const wdip = window.wdip;
+  const household = await wdip.household();
+
+  const config = window.FIREBASE_CONFIG;
+  if (!config || Object.values(config).some((v) => String(v).includes("PASTE_"))) {
+    wdip.status("Setup needed: add Firebase settings");
+    return;
+  }
+
+  let fb, store;
+  try {
+    const [appSdk, firestoreSdk] = await Promise.all([
+      import(SDK + "firebase-app.js"),
+      import(SDK + "firebase-firestore.js")
+    ]);
+    fb = firestoreSdk;
+    store = fb.initializeFirestore(appSdk.initializeApp(config), {
+      localCache: fb.persistentLocalCache({ tabManager: fb.persistentMultipleTabManager() })
+    });
+  } catch (e) {
+    console.error(e);
+    wdip.status("Couldn’t start. Go online and reopen the app.");
+    return;
+  }
+
+  // Ask Android not to clear this data when storage runs low.
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  // Status pill
+  const ERROR_HOLD_MS = 8000;
+  const streams = {};
+  let listenerFailed = false, writeFailedAt = 0, startupOver = false;
+  function updatePill() {
+    if (listenerFailed || Date.now() - writeFailedAt < ERROR_HOLD_MS) return;
+    const list = Object.values(streams);
+    const notConfirmed = list.length < 2 || list.some((s) => s.fromCache);
+    if (!navigator.onLine || notConfirmed) {
+      wdip.status(!navigator.onLine || startupOver ? "Offline: saved on this phone" : "Connecting…");
+    } else {
+      wdip.status(list.some((s) => s.pending) ? "Saving…" : "Synced");
+    }
+  }
+  setTimeout(() => { startupOver = true; updatePill(); }, 4000);
+  window.addEventListener("online", updatePill);
+  window.addEventListener("offline", updatePill);
+
+  // Writes are stored on the phone straight away. The promise from Firestore only finishes
+  // once the server answers, so don't wait for it or the app would hang while offline.
+  function background(write) {
+    write.catch((e) => {
+      writeFailedAt = Date.now();
+      wdip.writeError(e);
+      setTimeout(updatePill, ERROR_HOLD_MS);
+    });
+    return Promise.resolve();
+  }
+
+  const docRef = (path) => fb.doc(store, "households", household, ...path.split("/"));
+
+  wdip.connect({
+    doc: (path) => ({
+      set: (data) => background(fb.setDoc(docRef(path), data)),
+      delete: () => background(fb.deleteDoc(docRef(path)))
+    }),
+    collection: (name) => ({
+      onSnapshot: (next, error) => {
+        let first = true;
+        return fb.onSnapshot(
+          fb.collection(store, "households", household, name),
+          { includeMetadataChanges: true },
+          (snap) => {
+            streams[name] = { fromCache: snap.metadata.fromCache, pending: snap.metadata.hasPendingWrites };
+            // Status-only updates must not redraw the list, or they would interrupt typing and close dropdowns.
+            if (first || snap.docChanges().length) { first = false; next(snap); }
+            updatePill();
+          },
+          (e) => { listenerFailed = true; error(e); }
+        );
+      }
+    })
+  });
 })();
 </script>
 </body>
