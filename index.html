@@ -72,6 +72,11 @@ button,select,input{min-height:44px}
   <h1>Where did I put it?</h1>
   <p class="sub">Keep a list of places and record which items are in each one. Changes appear on every phone using the same household code.</p>
 
+  <div class="bar">
+    <input id="search" type="search" placeholder="Find an item…" aria-label="Find an item">
+    <button id="clear" type="button">Clear search</button>
+  </div>
+
   <form class="add" id="addForm" onsubmit="return false">
     <input id="name" placeholder="Item name (e.g. Passport)" aria-label="Item name" maxlength="80">
     <select id="loc" aria-label="Location"></select>
@@ -80,11 +85,6 @@ button,select,input{min-height:44px}
   </form>
 
   <p id="msg" role="alert" style="color:var(--warn);margin:-10px 0 14px;min-height:0"></p>
-
-  <div class="bar">
-    <input id="search" type="search" placeholder="Find an item…" aria-label="Find an item">
-    <button id="clear" type="button">Clear search</button>
-  </div>
 
   <div class="tabs" role="group" aria-label="View">
     <button id="byLoc" aria-pressed="true">By location</button>
