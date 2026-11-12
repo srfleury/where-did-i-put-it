@@ -31,7 +31,7 @@ input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-ra
 button{cursor:pointer;border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:8px}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.add{display:grid;gap:10px;grid-template-columns:2fr 2fr 1fr auto;margin-bottom:22px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.add{display:grid;gap:10px;grid-template-columns:2fr 2fr 1fr auto auto;margin-bottom:22px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
 .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .tabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .loc{background:var(--surface);border:1px solid var(--line);border-radius:10px;margin-bottom:12px;overflow:hidden}
@@ -82,6 +82,7 @@ button,select,input{min-height:44px}
     <input id="name" placeholder="Item name (e.g. Passport)" aria-label="Item name" maxlength="80">
     <select id="loc" aria-label="Location"></select>
     <input id="qty" type="number" min="1" value="1" aria-label="Quantity">
+    <button id="mic" type="button" aria-label="Speak an item and its location" hidden>🎤 Speak</button>
     <button class="primary" id="addBtn" type="button">Add item</button>
   </form>
 
@@ -104,6 +105,17 @@ button,select,input{min-height:44px}
     </div>
     <div class="chips" id="chips"></div>
     <p class="note" id="locNote">Tap ✎ to rename a location; its items stay with it. Removing a location moves its items to “Unassigned”.</p>
+  </section>
+
+  <section class="manage">
+    <h3>Backup</h3>
+    <p class="note" style="margin:0 0 10px">Save a copy of your whole list to a file, or put a saved copy back.</p>
+    <div class="row" style="flex-wrap:wrap">
+      <button id="bkSave" type="button">Save backup file</button>
+      <button id="bkRestore" type="button">Restore from backup file</button>
+      <input id="bkFile" type="file" accept=".json,application/json" hidden>
+    </div>
+    <p class="note" id="bkMsg" role="status"></p>
   </section>
 
   <section class="manage">
@@ -300,6 +312,71 @@ button,select,input{min-height:44px}
   $("byLoc").addEventListener("click",function(){view="loc";$("byLoc").setAttribute("aria-pressed","true");$("byName").setAttribute("aria-pressed","false");render();focusFirst();});
   $("byName").addEventListener("click",function(){view="name";$("byName").setAttribute("aria-pressed","true");$("byLoc").setAttribute("aria-pressed","false");render();});
   render();
+
+  // Voice entry: say "passport in desk drawer"
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition,listening=null;
+  function cap(t){return t.charAt(0).toUpperCase()+t.slice(1);}
+  function heard(t){
+    var said=norm(t).replace(/[.?!]+$/,""),item=said,found=null;
+    var byLen=locs.slice().sort(function(a,b){return norm(b.name).length-norm(a.name).length;});
+    var seps=[" in the "," on the "," at the "," inside the "," in "," on "," at "," inside "];
+    for(var i=0;i<byLen.length&&!found;i++){
+      var n=norm(byLen[i].name);
+      for(var j=0;j<seps.length;j++){
+        var tail=seps[j]+n;
+        if(said.length>tail.length&&said.slice(-tail.length)===tail){found=byLen[i];item=said.slice(0,-tail.length).trim();break;}
+      }
+    }
+    $("name").value=cap(item);
+    if(found){$("loc").value=found.id;msg("");}
+    else msg("Heard “"+t+"”. Pick the location, then tap Add item.");
+    $("addBtn").focus();
+  }
+  if(SR){
+    $("mic").hidden=false;
+    $("mic").addEventListener("click",function(){
+      if(listening){listening.stop();return;}
+      var rec=new SR();rec.lang=navigator.language||"en-US";rec.interimResults=false;rec.maxAlternatives=1;
+      rec.onresult=function(e){heard(e.results[0][0].transcript);};
+      rec.onerror=function(e){msg(e.error==="not-allowed"?"Allow the microphone for this app, then try again.":e.error==="network"?"Voice entry needs an internet connection.":e.error==="no-speech"?"Didn’t hear anything. Tap 🎤 and try again.":"Voice entry didn’t work. Try again.");};
+      rec.onend=function(){listening=null;$("mic").textContent="🎤 Speak";};
+      try{rec.start();listening=rec;$("mic").textContent="■ Stop";msg("");$("msg").style.color="var(--muted)";$("msg").textContent="Listening… say the item and where it is, like “passport in desk drawer”.";setTimeout(function(){$("msg").style.color="";},0);}catch(err){msg("Voice entry didn’t start. Try again.");}
+    });
+  }
+
+  // Backup and restore
+  function bk(t){$("bkMsg").textContent=t;}
+  $("bkSave").addEventListener("click",function(){
+    var data={app:"where-did-i-put-it",exported:new Date().toISOString(),
+      locations:locs.map(function(l){return {id:l.id,name:l.name};}),
+      items:items.map(function(i){return {id:i.id,name:i.name,loc:i.loc,qty:i.qty};})};
+    var name="where-did-i-put-it-backup-"+new Date().toISOString().slice(0,10)+".json";
+    var url=URL.createObjectURL(new Blob([JSON.stringify(data,null,1)],{type:"application/json"}));
+    var a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},2000);
+    bk("Saved "+name+" ("+data.items.length+" items, "+data.locations.length+" locations) to your Downloads.");
+  });
+  $("bkRestore").addEventListener("click",function(){if(!canWrite){bk("Wait until the app shows Synced, then try again.");return;}$("bkFile").value="";$("bkFile").click();});
+  $("bkFile").addEventListener("change",function(){
+    var f=this.files&&this.files[0];if(!f)return;
+    var rd=new FileReader();
+    rd.onerror=function(){bk("Couldn’t read that file.");};
+    rd.onload=function(){
+      var d;try{d=JSON.parse(rd.result);}catch(e){d=null;}
+      var ok=d&&d.app==="where-did-i-put-it"&&Array.isArray(d.items)&&Array.isArray(d.locations);
+      if(!ok){bk("That file isn’t a Where Did I Put It backup.");return;}
+      var L=d.locations.filter(function(l){return l&&l.id&&String(l.id).indexOf("/")<0&&l.name;});
+      var I=d.items.filter(function(i){return i&&i.id&&String(i.id).indexOf("/")<0&&i.name;});
+      if(!confirm("Replace the list on every phone with this backup?\n\nBackup: "+I.length+" items, "+L.length+" locations.\nNow: "+items.length+" items, "+locs.length+" locations.\n\nThis can’t be undone."))return;
+      var keepL={},keepI={},jobs=[];
+      L.forEach(function(l){keepL[l.id]=1;jobs.push(put("locations/"+l.id,{name:String(l.name)}));});
+      I.forEach(function(i){keepI[i.id]=1;jobs.push(put("items/"+i.id,{name:String(i.name),loc:keepL[i.loc]?String(i.loc):UN,qty:Math.max(1,parseInt(i.qty,10)||1)}));});
+      items.forEach(function(i){if(!keepI[i.id])jobs.push(del("items/"+i.id));});
+      locs.forEach(function(l){if(!keepL[l.id])jobs.push(del("locations/"+l.id));});
+      Promise.all(jobs).then(function(){bk("Restored "+I.length+" items and "+L.length+" locations.");});
+    };
+    rd.readAsText(f);
+  });
 
   // Household code (first run)
   var HOUSE_KEY="wdip_household";

@@ -1,5 +1,5 @@
 // Bump this name whenever you ship changes, so phones pick up the update.
-const CACHE = "wdip-v4";
+const CACHE = "wdip-v5";
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
 const SHELL = [
   "./",
