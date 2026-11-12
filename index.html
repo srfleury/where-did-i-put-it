@@ -41,6 +41,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .item .n{font-weight:600}.item .q{color:var(--muted);font-size:14px}
 .item select{width:auto;padding:6px 8px}
 .item .del{color:var(--warn);padding:6px 10px}
+.item:focus{outline:3px solid var(--accent);outline-offset:-3px}
 .empty{color:var(--muted);padding:12px 14px}
 .manage{margin-top:26px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
 .manage h3{margin:0 0 10px;font:600 17px "Fraunces",Georgia,serif}
@@ -51,7 +52,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .note{color:var(--muted);font-size:14px;margin:8px 0 0}
 button,select,input{min-height:44px}
 .chip button{min-height:36px;min-width:36px}
-@media(max-width:640px){body{font-size:17px}.add{grid-template-columns:1fr 1fr}.add button{grid-column:1/-1}.item{grid-template-columns:1fr auto}.item select{grid-column:1/2}}
+@media(max-width:640px){body{font-size:17px}.add{grid-template-columns:1fr 1fr}.add button{grid-column:1/-1}.item{grid-template-columns:1fr auto}.item .del{grid-column:2;grid-row:1}.item select{grid-column:1/-1;grid-row:2;width:100%}}
 </style>
 </head>
 <body>
@@ -91,6 +92,8 @@ button,select,input{min-height:44px}
     <button id="byName" aria-pressed="false">All items A–Z</button>
   </div>
 
+  <div id="pickWrap" style="margin-bottom:14px"><select id="locPick" aria-label="Choose a location to view"></select></div>
+
   <div id="list"></div>
 
   <section class="manage">
@@ -117,7 +120,7 @@ button,select,input{min-height:44px}
   var UN="";               // empty location id = unassigned
   var UNL="Unassigned";
   var locs=[], items=[];   // [{id,name}], [{id,name,loc,qty}]
-  var view="loc", db=null, canWrite=false, editId=null, editText="", editItemId=null, editItemText="";
+  var view="loc", selLoc=null, db=null, canWrite=false, editId=null, editText="", editItemId=null, editItemText="", editItemLoc="";
   function $(id){return document.getElementById(id);}
   function el(tag,attrs,text){var e=document.createElement(tag);if(attrs)for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!==undefined)e.textContent=text;return e;}
   function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
@@ -133,7 +136,7 @@ button,select,input{min-height:44px}
     sel.innerHTML="";
     locs.concat([{id:UN,name:UNL}]).forEach(function(l){var o=el("option",{value:l.id},l.name);if(l.id===current)o.selected=true;sel.appendChild(o);});
   }
-  function itemRow(it){
+  function itemRow(it,showMove){
     var row=el("div",{"class":"item"});
     var left=el("div");
     if(editItemId===it.id){
@@ -143,40 +146,43 @@ button,select,input{min-height:44px}
       var saveIt=function(){
         var v=editItemText.trim().replace(/\s+/g," ");
         if(!v)return;
-        if(v===it.name){editItemId=null;render();return;}
+        if(v===it.name&&editItemLoc===it.loc){editItemId=null;render();return;}
         var dup=items.filter(function(o){return o.id!==it.id&&norm(o.name)===norm(v);})[0];
         if(dup){msg("“"+dup.name+"” is already in your list ("+locName(dup.loc)+"). Duplicates aren’t allowed.");inp.focus();return;}
         msg("");
-        put("items/"+it.id,{name:v,qty:it.qty,loc:it.loc});
+        put("items/"+it.id,{name:v,qty:it.qty,loc:editItemLoc});
         editItemId=null;render();
       };
       inp.addEventListener("keydown",function(e){if(e.key==="Enter")saveIt();if(e.key==="Escape"){editItemId=null;render();}});
+      var ls=el("select",{"aria-label":"Location for "+it.name,style:"width:100%;margin-top:6px"});
+      locOptions(ls,editItemLoc);
+      ls.addEventListener("change",function(){editItemLoc=ls.value;});
       var eb=el("div",{style:"display:flex;gap:6px;margin-top:6px"});
-      var sv=el("button",{"class":"primary","aria-label":"Save name"},"Save");
+      var sv=el("button",{"class":"primary","aria-label":"Save changes"},"Save");
       sv.addEventListener("click",saveIt);
-      var cn=el("button",{"aria-label":"Cancel rename"},"Cancel");
+      var cn=el("button",{"aria-label":"Cancel edit"},"Cancel");
       cn.addEventListener("click",function(){editItemId=null;render();});
       eb.appendChild(sv);eb.appendChild(cn);
-      left.appendChild(inp);left.appendChild(eb);
+      left.appendChild(inp);left.appendChild(ls);left.appendChild(eb);
       setTimeout(function(){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);},0);
     } else {
       var nm=el("div",{"class":"n"},it.name);
-      var rn=el("button",{"aria-label":"Rename "+it.name,style:"color:var(--accent);border:0;background:transparent;padding:0 8px"},"✎");
+      var rn=el("button",{"aria-label":"Edit "+it.name,style:"color:var(--accent);border:0;background:transparent;padding:0 8px"},"✎");
       if(!canWrite)rn.disabled=true;
-      rn.addEventListener("click",function(){editItemId=it.id;editItemText=it.name;render();});
+      rn.addEventListener("click",function(){editItemId=it.id;editItemText=it.name;editItemLoc=it.loc;render();});
       nm.appendChild(rn);
       left.appendChild(nm);
     }
-    left.appendChild(el("div",{"class":"q"},"Qty "+it.qty+(view==="name"?" · in "+locName(it.loc):"")));
+    left.appendChild(el("div",{"class":"q"},"Qty "+it.qty+(showMove?" · in "+locName(homeOf(it)):"")));
     row.appendChild(left);
     var sel=el("select",{"aria-label":"Move "+it.name});
     locOptions(sel,homeOf(it));
     if(!canWrite)sel.disabled=true;
     sel.addEventListener("change",function(){put("items/"+it.id,{name:it.name,qty:it.qty,loc:sel.value});});
-    row.appendChild(sel);
+    if(showMove)row.appendChild(sel);
     var d=el("button",{"class":"del","aria-label":"Delete "+it.name},"Delete");
     if(!canWrite)d.disabled=true;
-    d.addEventListener("click",function(){del("items/"+it.id);});
+    d.addEventListener("click",function(){if(confirm("Delete “"+it.name+"”? This removes it from every phone."))del("items/"+it.id);});
     row.appendChild(d);
     return row;
   }
@@ -184,24 +190,31 @@ button,select,input{min-height:44px}
     var q=$("search").value.trim().toLowerCase();
     var shown=items.filter(function(i){return !q||i.name.toLowerCase().indexOf(q)>-1;});
     var list=$("list");list.innerHTML="";
+    $("pickWrap").style.display=(view==="loc"&&!q&&items.length)?"":"none";
     var byName=function(a,b){return a.name.localeCompare(b.name);};
     if(!items.length){list.appendChild(el("div",{"class":"empty"},"No items yet. Add your first item above and pick where it lives."));}
     else if(!shown.length){list.appendChild(el("div",{"class":"empty"},"No items match “"+$("search").value+"”."));}
-    else if(view==="loc"){
-      locs.concat([{id:UN,name:UNL}]).forEach(function(l){
-        var here=shown.filter(function(i){return homeOf(i)===l.id;});
-        if(l.id===UN&&!here.length)return;
-        if(q&&!here.length)return;
-        var box=el("section",{"class":"loc"});
-        var h=el("h2",null,l.name);h.appendChild(el("span",null,here.length+(here.length===1?" item":" items")));
-        box.appendChild(h);
-        if(!here.length)box.appendChild(el("div",{"class":"empty"},"Nothing here yet."));
-        here.sort(byName).forEach(function(i){box.appendChild(itemRow(i));});
-        list.appendChild(box);
+    else if(view==="loc"&&!q){
+      var opts=locs.concat([{id:UN,name:UNL}]);
+      if(selLoc===null||!opts.some(function(o){return o.id===selLoc;}))selLoc=opts[0].id;
+      var pick=$("locPick");pick.innerHTML="";
+      opts.forEach(function(o){
+        var n=items.filter(function(i){return homeOf(i)===o.id;}).length;
+        var op=el("option",{value:o.id},o.name+" ("+n+")");
+        if(o.id===selLoc)op.selected=true;
+        pick.appendChild(op);
       });
+      var cur=opts.filter(function(o){return o.id===selLoc;})[0];
+      var here=items.filter(function(i){return homeOf(i)===selLoc;});
+      var box=el("section",{"class":"loc"});
+      var h=el("h2",null,cur.name);h.appendChild(el("span",null,here.length+(here.length===1?" item":" items")));
+      box.appendChild(h);
+      if(!here.length)box.appendChild(el("div",{"class":"empty"},"Nothing here yet."));
+      here.sort(byName).forEach(function(i){box.appendChild(itemRow(i,false));});
+      list.appendChild(box);
     } else {
       var box=el("section",{"class":"loc"});
-      shown.slice().sort(byName).forEach(function(i){box.appendChild(itemRow(i));});
+      shown.slice().sort(byName).forEach(function(i){box.appendChild(itemRow(i,true));});
       list.appendChild(box);
     }
     var chips=$("chips");chips.innerHTML="";
@@ -280,9 +293,11 @@ button,select,input{min-height:44px}
   $("name").addEventListener("keydown",function(e){if(e.key==="Enter")addItem();});
   $("addLoc").addEventListener("click",addLoc);
   $("newLoc").addEventListener("keydown",function(e){if(e.key==="Enter")addLoc();});
+  function focusFirst(){var f=document.querySelector("#list .item");if(!f)return;f.setAttribute("tabindex","-1");f.focus({preventScroll:true});f.scrollIntoView({block:"nearest"});}
+  $("locPick").addEventListener("change",function(){selLoc=this.value;render();focusFirst();});
   $("search").addEventListener("input",render);
   $("clear").addEventListener("click",function(){$("search").value="";render();});
-  $("byLoc").addEventListener("click",function(){view="loc";$("byLoc").setAttribute("aria-pressed","true");$("byName").setAttribute("aria-pressed","false");render();});
+  $("byLoc").addEventListener("click",function(){view="loc";$("byLoc").setAttribute("aria-pressed","true");$("byName").setAttribute("aria-pressed","false");render();focusFirst();});
   $("byName").addEventListener("click",function(){view="name";$("byName").setAttribute("aria-pressed","true");$("byLoc").setAttribute("aria-pressed","false");render();});
   render();
 
