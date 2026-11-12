@@ -86,6 +86,7 @@ button,select,input{min-height:44px}
     <button class="primary" id="addBtn" type="button">Add item</button>
   </form>
 
+  <p id="found" role="status" hidden style="margin:-8px 0 14px;padding:10px 14px;border-radius:10px;background:var(--chip);font-size:18px;font-weight:600"></p>
   <p id="msg" role="alert" style="color:var(--warn);margin:-10px 0 14px;min-height:0"></p>
 
   <div class="tabs" role="group" aria-label="View">
@@ -149,7 +150,7 @@ button,select,input{min-height:44px}
     locs.concat([{id:UN,name:UNL}]).forEach(function(l){var o=el("option",{value:l.id},l.name);if(l.id===current)o.selected=true;sel.appendChild(o);});
   }
   function itemRow(it,showMove){
-    var row=el("div",{"class":"item"});
+    var row=el("div",{"class":"item","data-id":it.id});
     var left=el("div");
     if(editItemId===it.id){
       var inp=el("input",{type:"text",maxlength:"80","aria-label":"New name for "+it.name});
@@ -307,7 +308,7 @@ button,select,input{min-height:44px}
   $("newLoc").addEventListener("keydown",function(e){if(e.key==="Enter")addLoc();});
   function focusFirst(){var f=document.querySelector("#list .item");if(!f)return;f.setAttribute("tabindex","-1");f.focus({preventScroll:true});f.scrollIntoView({block:"nearest"});}
   $("locPick").addEventListener("change",function(){selLoc=this.value;render();focusFirst();});
-  $("search").addEventListener("input",render);
+  $("search").addEventListener("input",function(){$("found").hidden=true;render();});
   $("clear").addEventListener("click",function(){$("search").value="";render();});
   $("byLoc").addEventListener("click",function(){view="loc";$("byLoc").setAttribute("aria-pressed","true");$("byName").setAttribute("aria-pressed","false");render();focusFirst();});
   $("byName").addEventListener("click",function(){view="name";$("byName").setAttribute("aria-pressed","true");$("byLoc").setAttribute("aria-pressed","false");render();});
@@ -338,8 +339,16 @@ button,select,input{min-height:44px}
     var m=said.match(/^(add|put)\s+(.+)$/);
     if(m){heard(m[2]);return;}
     var q=said.replace(/^(where (is|are|did i put|did we put) (my |our |the )?|find (my |our |the )?|search (for )?(my |our |the )?)/,"").trim();
-    msg("");$("search").value=q;render();
-    var f=document.querySelector("#list .item");
+    msg("");$("search").value="";
+    var hits=items.filter(function(i){return q&&norm(i.name).indexOf(q)>-1;}).sort(function(a,b){return a.name.localeCompare(b.name);});
+    var box=$("found");box.hidden=false;box.innerHTML="";
+    if(!hits.length){box.textContent="Couldn’t find “"+q+"”.";render();return;}
+    hits.slice(0,8).forEach(function(i,k){if(k)box.appendChild(el("br"));box.appendChild(document.createTextNode(i.name+" → "+locName(i.loc)+(i.qty>1?" (qty "+i.qty+")":"")));});
+    if(hits.length>8)box.appendChild(el("div",{style:"font-size:14px;font-weight:400"},"…and "+(hits.length-8)+" more."));
+    // Open the first match's location and highlight it.
+    view="loc";$("byLoc").setAttribute("aria-pressed","true");$("byName").setAttribute("aria-pressed","false");
+    selLoc=hits[0].loc;render();
+    var f=document.querySelector('#list .item[data-id="'+hits[0].id.replace(/["\\]/g,"")+'"]');
     if(f){f.setAttribute("tabindex","-1");f.focus({preventScroll:true});f.scrollIntoView({block:"nearest"});}
   }
   if(SR){
